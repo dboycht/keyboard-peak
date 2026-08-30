@@ -71,8 +71,10 @@ export class Keyboard3D {
     label.renderOrder = 2;
 
     // ---------- 数据柱 ----------
+    // 几何体用单位宽深（1×1），实际显示尺寸由 scale.x/z 控制：
+    // 经典模式 scale=0.34（细柱）；覆盖模式 scale=键宽/键深（完全覆盖键帽）
     const barH = 1; // 单位高度，通过 scale.y 控制
-    const barGeo = new THREE.BoxGeometry(BAR_WIDTH, barH, BAR_DEPTH);
+    const barGeo = new THREE.BoxGeometry(1, barH, 1);
     // 底部为原点，成长时向上生长
     barGeo.translate(0, barH / 2, 0);
     const barMat = new THREE.MeshStandardMaterial({
@@ -105,10 +107,13 @@ export class Keyboard3D {
     this.group.add(cap);
     this.group.add(label);
 
-    // 显示模式相关：目标/当前宽度（经典=细柱，覆盖=铺满整个键位网格紧密贴合）
-    const coverW = Math.max(k.w * 1.0, 0.1);   // 覆盖整格：相邻柱子肩并肩无缝隙
+    // 显示模式相关：目标/当前宽度
+    // classic=细柱（直接用 BAR_WIDTH 常量宽度）；cover=铺满键帽网格（=键宽/键深）
+    // 键帽实际顶面高度 = 键帽底 + 键帽高 = KEYCAP_TOP/2 + KEYCAP_H/2
+    const keycapTopY = KEYCAP_TOP / 2 + KEYCAP_H / 2;   // = 0.24
+    const coverW = Math.max(k.w * 1.0, 0.1);             // 覆盖整格：相邻柱子肩并肩无缝隙
     const coverD = Math.max(k.h * 1.0, 0.1);
-    const coverBase = KEYCAP_TOP - 0.005;      // 基座贴键帽顶，完全盖住键帽
+    const coverBase = keycapTopY - 0.002;                // 柱子底部贴合键帽顶面（微下沉防 z-fight）
 
     return {
       id: k.id, cap, label, bar, tip, barMat,
@@ -116,7 +121,7 @@ export class Keyboard3D {
       target: 0,       // 目标高度
       pressStart: -1,  // 按压动画开始时间
       hasData: false,
-      // 模式参数
+      // 模式参数（几何体单位宽，scale = 实际尺寸）
       classicW: BAR_WIDTH, classicD: BAR_DEPTH, classicBase: BAR_BASE,
       coverW, coverD, coverBase,
       curW: BAR_WIDTH, curD: BAR_DEPTH, curBase: BAR_BASE,

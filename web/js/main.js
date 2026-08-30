@@ -198,3 +198,17 @@ document.addEventListener('visibilitychange', () => {
       .catch(() => {});
   }
 });
+
+// 调试钩子：window.__kpeakDebug() 输出键盘/柱子真实尺寸（生产保留，便于排查显示问题）
+window.__kpeakDebug = () => {
+  const out = {};
+  for (const [id, m] of keyboard.keys) {
+    if (['SPACE', 'A', 'ENTER', 'E'].includes(id)) {
+      out[id] = {
+        w: m.curW, d: m.curD, base: m.curBase, h: m.current, target: m.target,
+      };
+    }
+  }
+  out.mode = keyboard.mode;
+  return out;
+};

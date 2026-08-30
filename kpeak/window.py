@@ -150,9 +150,8 @@ class ControlWindow:
         # 按钮行
         btns = tk.Frame(root, bg=BG)
         btns.grid(row=2, column=0, sticky="ew", padx=16, pady=12)
-        btns.grid_columnconfigure(0, weight=1)
-        btns.grid_columnconfigure(1, weight=1)
-        btns.grid_columnconfigure(2, weight=1)
+        for i in range(4):
+            btns.grid_columnconfigure(i, weight=1)
 
         b_open = ttk.Button(btns, text="打开可视化页面", style="Accent.TButton",
                             command=lambda: self._safe(self.open_viz))
@@ -162,9 +161,13 @@ class ControlWindow:
                             command=lambda: self._safe(self.open_data))
         b_data.grid(row=0, column=1, sticky="ew", padx=4)
 
+        b_about = ttk.Button(btns, text="关于", style="Accent.TButton",
+                             command=self._on_about)
+        b_about.grid(row=0, column=2, sticky="ew", padx=4)
+
         b_exit = ttk.Button(btns, text="退出程序", style="Accent.TButton",
                             command=lambda: self._safe(self.on_exit))
-        b_exit.grid(row=0, column=2, sticky="ew", padx=4)
+        b_exit.grid(row=0, column=3, sticky="ew", padx=4)
 
         tk.Label(root, text="关闭本窗口将最小化到托盘（不退出）；如需完全退出请点「退出程序」或托盘右键菜单",
                  bg=BG, fg=DIM, font=("Microsoft YaHei UI", 8)).grid(row=3, column=0, sticky="w", padx=16, pady=(0, 10))
@@ -290,6 +293,26 @@ class ControlWindow:
                 messagebox.showinfo("keyboard-peak", text, parent=self._root)
         except Exception:
             pass
+
+    def _on_about(self) -> None:
+        """关于对话框：版本 / 说明 / 仓库。"""
+        try:
+            import kpeak
+            from tkinter import messagebox
+            ver = getattr(kpeak, "__version__", "?")
+            msg = (
+                "keyboard-peak 键盘按键三维可视化\n"
+                f"\n版本：{ver}\n"
+                "功能：后台记录每一次键盘按键，\n"
+                "      以 3D 立体键盘 + 数据柱实时可视化。\n"
+                "\n三种显示模式：经典柱 / 覆盖柱 / 热力图\n"
+                "托盘右键可暂停采集、打开页面或退出。\n"
+                "\nGitHub：github.com/dboycht/keyboard-peak\n"
+                "\n© 2026 Mizuki"
+            )
+            messagebox.showinfo("关于 keyboard-peak", msg, parent=self._root)
+        except Exception:
+            log.exception("about dialog failed")
 
     # ------------------------------------------------------------------
     # 状态刷新（tk 线程内）
