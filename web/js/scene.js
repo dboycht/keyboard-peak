@@ -202,6 +202,16 @@ export class Scene {
   /** 注册每帧更新函数 */
   addAnimation(fn) { this._animations.push(fn); }
 
+  /** 暂停/恢复模型的自动旋转（autoRotate） */
+  setAutoRotate(enabled) {
+    this.controls.autoRotate = !!enabled;
+  }
+
+  /** 当前是否自动旋转 */
+  isAutoRotating() {
+    return this.controls && this.controls.autoRotate;
+  }
+
   /** 添加涟漪环（按键特效） */
   addRipple(x, z, color = 0x6c8cff) {
     const ring = new THREE.Mesh(

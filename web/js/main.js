@@ -65,7 +65,6 @@ function applySnapshot(snap) {
   totalCount = snap.total || 0;
   todayTotal = snap.today_total || 0;
   ui.applySnapshot(snap);
-  setPausedUI(snap.paused);
   UI_rateRefresh();
   ui.setWatermarkHidden(Object.keys(counts).length > 0);
 }
@@ -157,35 +156,28 @@ setTimeout(() => {
   if (Object.keys(counts).length > 0) ui.setWatermarkHidden(true);
 }, 5000);
 
-// ---------------------------------------------------------------- 采集暂停控制
+// ---------------------------------------------------------------- 模型旋转控制
 
+// 「暂停」= 暂停模型的自动旋转（autoRotate），与按键采集无关
 const pauseBtn = document.getElementById('pauseBtn');
 const pauseText = document.getElementById('pauseText');
 const pauseIcon = document.getElementById('pauseIcon');
-let paused = false;
+let rotating = true;
 
-function setPausedUI(p) {
-  paused = !!p;
-  pauseBtn.classList.toggle('paused', paused);
-  pauseText.textContent = paused ? '恢复采集' : '暂停采集';
-  pauseIcon.textContent = paused ? '▶' : '⏸';
+function setRotatingUI(state) {
+  rotating = !!state;
+  pauseBtn.classList.toggle('paused', !rotating);
+  pauseText.textContent = rotating ? '暂停旋转' : '恢复旋转';
+  pauseIcon.textContent = rotating ? '⏸' : '▶';
 }
 
-async function togglePause() {
-  pauseBtn.disabled = true;
-  try {
-    const resp = await fetch('/api/pause-toggle', { method: 'POST' });
-    const data = await resp.json();
-    setPausedUI(data && data.paused);
-  } catch (e) {
-    // 失败：刷新快照以同步真实状态
-    fetch('/snapshot').then((r) => r.json()).then((snap) => setPausedUI(snap.paused));
-  } finally {
-    pauseBtn.disabled = false;
-  }
+function toggleRotate() {
+  rotating = !rotating;
+  scene.setAutoRotate(rotating);
+  setRotatingUI(rotating);
 }
 
-pauseBtn.addEventListener('click', togglePause);
+pauseBtn.addEventListener('click', toggleRotate);
 
 // ---------------------------------------------------------------- 显示模式切换
 
@@ -243,5 +235,6 @@ window.__kpeakDebug = () => {
     }
   }
   out.mode = keyboard.mode;
+  out.autoRotate = scene.isAutoRotating();
   return out;
 };
