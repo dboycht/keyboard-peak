@@ -205,3 +205,68 @@ class KeyStore:
         self.flush()
         imported = sum(import_counts.values())
         return {"ok": True, "message": f"导入成功（{'合并' if merge else '覆盖'}，{imported} 次按键）", "imported": imported}
+
+    # ------------------------------------------------------------------
+    # 数据管理（控制窗口用）
+    # ------------------------------------------------------------------
+
+    def data_overview(self) -> dict:
+        """统计数据概览（控制窗口数据管理区显示）。"""
+        with self._lock:
+            today = datetime.now().strftime("%Y-%m-%d")
+            today_total = sum(self.daily.get(today, {}).values())
+            file_size = self.data_file.stat().st_size if self.data_file.exists() else 0
+            return {
+                "total": self._total,
+                "today_total": today_total,
+                "days": len(self.daily),
+                "key_kinds": len(self.counts),
+                "file_size": file_size,
+                "file_path": str(self.data_file),
+            }
+
+    def history_daily(self, limit: int = 30) -> list:
+        """按天历史（最近 limit 天，倒序：今天在前）。"""
+        with self._lock:
+            rows = []
+            for day, kv in sorted(self.daily.items(), reverse=True):
+                rows.append({
+                    "date": day,
+                    "count": sum(kv.values()),
+                    "kinds": len(kv),
+                })
+                if len(rows) >= limit:
+                    break
+            return rows
+
+    def clear_today(self) -> dict:
+        """清空今日数据。返回 {ok, message, removed}。"""
+        with self._lock:
+            today = datetime.now().strftime("%Y-%m-%d")
+            removed = sum(self.daily.get(today, {}).values())
+            if removed == 0:
+                return {"ok": True, "message": "今日暂无数据", "removed": 0}
+            daily = self.daily.pop(today, {})
+            # 重建总计数：减去今天贡献
+            for k, v in daily.items():
+                self.counts[k] = self.counts.get(k, 0) - v
+                if self.counts[k] <= 0:
+                    del self.counts[k]
+            # 重建 total
+            self._total = max(sum(self.counts.values()), 0)
+            self._dirty = True
+        self.flush()
+        return {"ok": True, "message": f"已清空今日数据（{removed} 次按键）", "removed": removed}
+
+    def clear_all(self) -> dict:
+        """清空全部统计数据。返回 {ok, message}。"""
+        with self._lock:
+            removed = self._total
+            self.counts = {}
+            self.daily = {}
+            self.recent = deque(maxlen=RECENT_KEYS_MAX)
+            self.minutes = deque(maxlen=MINUTE_BUCKETS_MAX)
+            self._total = 0
+            self._dirty = True
+        self.flush()
+        return {"ok": True, "message": f"已清空全部数据（{removed} 次按键）", "removed": removed}

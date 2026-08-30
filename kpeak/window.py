@@ -71,11 +71,13 @@ BUTTON_STYLE = {
 
 class ControlWindow:
     def __init__(self, get_snapshot, open_viz=None, open_data=None, on_exit=None,
-                 settings=None, export_data=None, import_data=None):
+                 settings=None, export_data=None, import_data=None,
+                 data_overview=None, history_daily=None, clear_today=None, clear_all=None):
         """get_snapshot: 可调用，返回 {total, today_total, ...}（线程安全）。
         open_viz / open_data / on_exit：按钮回调（在 tk 线程内执行）。
         settings: Settings 对象（通知开关等，可空）。
-        export_data / import_data：数据导出/导入回调（在 tk 线程调用）。"""
+        export_data / import_data：数据导出/导入回调。
+        data_overview / history_daily / clear_today / clear_all：数据管理回调。"""
         self.get_snapshot = get_snapshot
         self.open_viz = open_viz
         self.open_data = open_data
@@ -83,6 +85,10 @@ class ControlWindow:
         self.settings = settings
         self.export_data = export_data
         self.import_data = import_data
+        self.data_overview = data_overview
+        self.history_daily = history_daily
+        self.clear_today = clear_today
+        self.clear_all = clear_all
         self._cmds: queue_mod.Queue = queue_mod.Queue()
         self._thread: threading.Thread | None = None
         self._ready = threading.Event()
@@ -107,7 +113,7 @@ class ControlWindow:
             self._root.title("keyboard-peak 控制中心")
             self._root.configure(bg=BG)
             self._root.attributes("-topmost", False)
-            self._root.resizable(False, False)
+            self._root.resizable(True, True)  # 数据管理区内容多，允许缩放
             self._build_ui()
             # 关窗 → 隐藏到托盘（不退出）
             self._root.protocol("WM_DELETE_WINDOW", self._hide)
@@ -118,12 +124,25 @@ class ControlWindow:
             # mainloop 退出（quit 指令）→ 先释放 tk 对象引用，再销毁窗口
             # 顺序关键：必须先清变量（此时 tk 解释器仍存活），再 destroy，
             # 否则 Variable.__del__ 在 root 销毁后访问已死的 Tcl 会报错
-            for v in self._vars.values():
+            # 统一收集所有 tk 变量引用（避免主线程 GC 触发 __del__ 报错）
+            all_vars = list(self._vars.values())
+            if getattr(self, "_ov", None):
+                all_vars.extend(self._ov.values())
+            if getattr(self, "_history_var", None):
+                all_vars.append(self._history_var)
+            if getattr(self, "_notify_var", None):
+                all_vars.append(self._notify_var)
+            if getattr(self, "_daily_var", None):
+                all_vars.append(self._daily_var)
+            for v in all_vars:
                 try:
                     v.get()
                 except Exception:
                     pass
             self._vars.clear()
+            if getattr(self, "_ov", None):
+                self._ov.clear()
+            self._history_var = None
             self._notify_var = None
             self._daily_var = None
             try:
@@ -250,25 +269,111 @@ class ControlWindow:
         if self.settings is not None:
             self.settings.set("notify_daily", bool(self._daily_var.get()))
 
-    # ---------------- 数据区：导出 / 导入 ----------------
+    # ---------------- 数据管理区 ----------------
 
     def _build_data_section(self, root, row) -> None:
-        if self.export_data is None and self.import_data is None:
+        if (self.export_data is None and self.import_data is None
+                and self.data_overview is None and self.clear_today is None):
             return
         card = tk.Frame(root, bg=CARD, bd=0, highlightthickness=1, highlightbackground="#1f2650")
         card.grid(row=row, column=0, sticky="ew", padx=16, pady=4)
-        tk.Label(card, text="数据", bg=CARD, fg=ACCENT,
+        tk.Label(card, text="数据管理", bg=CARD, fg=ACCENT,
                  font=("Microsoft YaHei UI", 11, "bold")).grid(row=0, column=0, columnspan=2, sticky="w", padx=16, pady=(12, 4))
 
-        btns = tk.Frame(card, bg=CARD)
-        btns.grid(row=1, column=0, columnspan=2, sticky="ew", padx=16, pady=(0, 10))
-        btns.grid_columnconfigure(0, weight=1)
-        btns.grid_columnconfigure(1, weight=1)
+        # ---- 概览 ----
+        self._ov = {}
+        ov_labels = [
+            ("累计按键", "ov_total"),
+            ("今日按键", "ov_today"),
+            ("记录天数", "ov_days"),
+            ("按键种类", "ov_kinds"),
+            ("数据大小", "ov_size"),
+        ]
+        for i, (label, key) in enumerate(ov_labels):
+            tk.Label(card, text=label, bg=CARD, fg=DIM,
+                     font=("Microsoft YaHei UI", 9), anchor="w").grid(row=1, column=i * 2, sticky="w",
+                                                                      padx=(16 if i == 0 else 8, 4), pady=2)
+            self._ov[key] = tk.StringVar(value="--")
+            tk.Label(card, textvariable=self._ov[key], bg=CARD, fg=ACCENT2,
+                     font=("Segoe UI", 10, "bold"), anchor="w").grid(row=2, column=i * 2, sticky="w",
+                                                                     padx=(16 if i == 0 else 8, 4), pady=(0, 6))
+        card.grid_columnconfigure(len(ov_labels) * 2 - 1, weight=1)
 
-        ttk.Button(btns, text="导出数据…", style="Accent.TButton",
-                   command=self._on_export).grid(row=0, column=0, sticky="ew", padx=4)
-        ttk.Button(btns, text="导入数据…", style="Accent.TButton",
-                   command=self._on_import).grid(row=0, column=1, sticky="ew", padx=4)
+        # ---- 按天历史 ----
+        row_h = 3
+        tk.Label(card, text="按天历史（近 30 天）", bg=CARD, fg=DIM,
+                 font=("Microsoft YaHei UI", 9)).grid(row=row_h, column=0, columnspan=2, sticky="w", padx=16, pady=(4, 2))
+        self._history_var = tk.StringVar(value="（暂无数据）")
+        tk.Label(card, textvariable=self._history_var, bg=CARD, fg=FG,
+                 font=("Consolas", 9), justify="left", anchor="w").grid(
+            row=row_h + 1, column=0, columnspan=2, sticky="w", padx=16, pady=(0, 6))
+
+        # ---- 操作按钮 ----
+        btns = tk.Frame(card, bg=CARD)
+        btns.grid(row=row_h + 2, column=0, columnspan=2, sticky="ew", padx=16, pady=(0, 12))
+        for i in range(4):
+            btns.grid_columnconfigure(i, weight=1)
+
+        b_export = ttk.Button(btns, text="导出数据…", style="Accent.TButton", command=self._on_export)
+        b_export.grid(row=0, column=0, sticky="ew", padx=3)
+        b_import = ttk.Button(btns, text="导入数据…", style="Accent.TButton", command=self._on_import)
+        b_import.grid(row=0, column=1, sticky="ew", padx=3)
+        b_clear_t = ttk.Button(btns, text="清空今日", style="Accent.TButton", command=self._on_clear_today)
+        b_clear_t.grid(row=0, column=2, sticky="ew", padx=3)
+        b_clear_a = ttk.Button(btns, text="清空全部", style="Accent.TButton", command=self._on_clear_all)
+        b_clear_a.grid(row=0, column=3, sticky="ew", padx=3)
+
+    # 数据概览刷新（由 _refresh 每 1 秒调用，节流到 2 秒）
+    def _refresh_data(self) -> None:
+        if self.data_overview is None:
+            return
+        try:
+            ov = self.data_overview() or {}
+            self._ov["ov_total"].set(f"{ov.get('total', 0):,}")
+            self._ov["ov_today"].set(f"{ov.get('today_total', 0):,}")
+            self._ov["ov_days"].set(f"{ov.get('days', 0)} 天")
+            self._ov["ov_kinds"].set(f"{ov.get('key_kinds', 0)} 种")
+            size = ov.get("file_size", 0)
+            self._ov["ov_size"].set(f"{size / 1024:.1f} KB" if size < 1024 * 1024 else f"{size / 1024 / 1024:.2f} MB")
+
+            hist = self.history_daily(30) if self.history_daily else []
+            if hist:
+                lines = []
+                for h in hist[:15]:
+                    lines.append(f"{h['date']}   {h['count']:>6,} 次  ({h['kinds']} 种)")
+                if len(hist) > 15:
+                    lines.append(f"…… 共 {len(hist)} 天")
+                self._history_var.set("\n".join(lines))
+            else:
+                self._history_var.set("（暂无数据）")
+        except Exception:
+            log.exception("data overview refresh failed")
+
+    def _on_clear_today(self) -> None:
+        from tkinter import messagebox
+        if self.clear_today is None:
+            return
+        if not messagebox.askyesno("清空今日数据", "确定清空今天的按键统计吗？\n该操作不可撤销。", parent=self._root):
+            return
+        try:
+            result = self.clear_today()
+            self._notice(result.get("message", "已清空"), error=not result.get("ok", True))
+        except Exception as e:
+            self._notice(f"清空失败：{e}", error=True)
+
+    def _on_clear_all(self) -> None:
+        from tkinter import messagebox
+        if self.clear_all is None:
+            return
+        if not messagebox.askyesno("清空全部数据", "确定清空全部按键统计吗？\n所有历史数据将被删除，且不可恢复！\n建议先「导出数据」备份。", parent=self._root):
+            return
+        if not messagebox.askyesno("二次确认", "再次确认：真的要清空全部数据？", parent=self._root):
+            return
+        try:
+            result = self.clear_all()
+            self._notice(result.get("message", "已清空"), error=not result.get("ok", True))
+        except Exception as e:
+            self._notice(f"清空失败：{e}", error=True)
 
     def _on_export(self) -> None:
         from tkinter import filedialog
@@ -373,6 +478,13 @@ class ControlWindow:
                 self._vars["url"].set(snap["url"])
             if "data" in snap:
                 self._vars["data"].set(snap["data"])
+        except Exception:
+            pass
+        # 数据管理区概览/历史（每 2 秒刷新一次，避免频繁读盘）
+        try:
+            if not getattr(self, "_last_data_refresh", 0) or time.time() - self._last_data_refresh >= 2.0:
+                self._last_data_refresh = time.time()
+                self._refresh_data()
         except Exception:
             pass
         if self._root is not None:

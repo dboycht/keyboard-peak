@@ -213,6 +213,10 @@ def main() -> int:
         settings=settings,
         export_data=store.export_data,
         import_data=store.import_data,
+        data_overview=store.data_overview,
+        history_daily=store.history_daily,
+        clear_today=store.clear_today,
+        clear_all=store.clear_all,
     )
     tray = TrayIcon(
         on_open=_open_viz,
