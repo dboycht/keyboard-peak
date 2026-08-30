@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>keyboard-peak · 键盘按键三维可视化</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+<link rel="stylesheet" href="/static/css/style.css" />
+<script type="importmap">
+{
+  "imports": {
+    "three": "/static/vendor/three.module.min.js",
+    "three/addons/": "/static/vendor/"
+  }
+}
+</script>
+</head>
+<body>
+  <!-- ============ Three.js 画布 ============ -->
+  <div id="stage"></div>
+
+  <!-- ============ 顶部状态栏 ============ -->
+  <header id="topbar">
+    <div class="brand">
+      <span class="logo">⌨</span>
+      <div class="brand-text">
+        <h1>keyboard<span class="accent">·peak</span></h1>
+        <p class="tagline">键盘使用三维可视化</p>
+      </div>
+    </div>
+    <div class="live-badge" id="liveBadge">
+      <span class="dot"></span>
+      <span id="liveText">连接中…</span>
+    </div>
+  </header>
+
+  <!-- ============ 左侧统计面板 ============ -->
+  <aside id="panel">
+    <section class="card">
+      <div class="metric">
+        <span class="metric-label">累计按键</span>
+        <span class="metric-value" id="mTotal">0</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">今日按键</span>
+        <span class="metric-value" id="mToday">0</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">实时速率</span>
+        <span class="metric-value" id="mRate">0.0</span>
+        <span class="metric-unit">键/分</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-title">活跃趋势 <span class="hint">近 60 分钟</span></div>
+      <canvas id="spark" width="300" height="80"></canvas>
+    </section>
+
+    <section class="card">
+      <div class="card-title">Top 按键</div>
+      <ol id="topList" class="top-list"></ol>
+    </section>
+
+    <section class="card">
+      <div class="card-title">最近按键</div>
+      <div id="recentTicker" class="ticker"></div>
+    </section>
+  </aside>
+
+  <!-- ============ 右下角操作提示 ============ -->
+  <footer id="hint">
+    <p>🖱 拖拽旋转 &nbsp;·&nbsp; 滚轮缩放 &nbsp;·&nbsp; 右键平移</p>
+    <p class="dim">柱子高度 = 按键使用频率（√尺度）</p>
+  </footer>
+
+  <!-- ============ 空键盘水位线 ============ -->
+  <div id="watermark">按键数据将实时生长于此</div>
+
+  <script type="module" src="/static/js/main.js"></script>
+</body>
+</html>

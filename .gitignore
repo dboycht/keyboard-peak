@@ -1,0 +1,17 @@
+# ---------- 运行时数据（绝不入库） ----------
+data/
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# ---------- 开发过程截图（仅保留 README 引用的最终效果图） ----------
+docs/screenshot_1.png
+docs/screenshot_2.png
+
+# ---------- 工具 ----------
+.vscode/
+.idea/
