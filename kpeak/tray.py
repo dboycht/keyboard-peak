@@ -24,8 +24,6 @@ import os
 import struct
 import tempfile
 import threading
-import webbrowser
-from pathlib import Path
 
 log = logging.getLogger("kpeak.tray")
 

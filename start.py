@@ -22,12 +22,12 @@ from __future__ import annotations
 import argparse
 import atexit
 import logging
+import os
 import random
 import sys
 import threading
 import time
 import webbrowser
-from pathlib import Path
 
 # Windows 控制台默认 GBK，切换 UTF-8 保证中文日志正常显示
 if sys.platform == "win32":
@@ -83,7 +83,7 @@ _DEMO_WEIGHTS = {
     "COMMA": 1.2, "PERIOD": 1.1, "SLASH": 0.3, "SEMICOLON": 0.2,
     "MINUS": 0.2, "EQUAL": 0.1, "QUOTE": 0.2, "LBRACKET": 0.1, "RBRACKET": 0.1,
     "LSHIFT": 2.0, "RSHIFT": 0.8, "LCTRL": 0.5, "RCTRL": 0.05, "LALT": 0.2,
-    "CAPSLOCK": 0.03, "F1": 0.01, "F5": 0.05, "DELETE": 0.3, "BACKSPACE": 0.5,
+    "CAPSLOCK": 0.03, "F1": 0.01, "F5": 0.05, "DELETE": 0.3,
     "NUMPAD_0": 0.08, "NUMPAD_1": 0.06, "NUMPAD_5": 0.05, "NUMPAD_ENTER": 0.03,
     "ESC": 0.02, "HOME": 0.01, "END": 0.01, "UP": 0.05, "DOWN": 0.06,
     "LEFT": 0.08, "RIGHT": 0.08, "PAGEUP": 0.01, "PAGEDOWN": 0.01,
