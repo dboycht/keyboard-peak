@@ -204,8 +204,8 @@ export class Keyboard3D {
         mesh.bar.scale.y = 0.12;
         mesh.bar.scale.x = mesh.curW;
         mesh.bar.scale.z = mesh.curD;
-        const base = mesh.curBase;
-        mesh.bar.position.y = base + 0.06;
+        // 几何体底部在本地原点：position.y = base 即底部精确落在 base（贴键帽顶）
+        mesh.bar.position.y = mesh.curBase;
       } else if (h < 0.01) {
         // 经典模式空柱：隐藏
         mesh.bar.visible = false;
@@ -217,8 +217,8 @@ export class Keyboard3D {
         mesh.bar.scale.x = mesh.curW;
         mesh.bar.scale.z = mesh.curD;
         const base = mesh.curBase;
-        const mid = base + mesh.bar.scale.y / 2;
-        mesh.bar.position.y = mid;
+        // 几何体底部在本地原点：position.y = base，柱体从 base 向上生长（不悬浮）
+        mesh.bar.position.y = base;
         mesh.tip.position.y = base + mesh.bar.scale.y + 0.03;
       }
 

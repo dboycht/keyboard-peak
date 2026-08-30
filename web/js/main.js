@@ -206,6 +206,8 @@ window.__kpeakDebug = () => {
     if (['SPACE', 'A', 'ENTER', 'E'].includes(id)) {
       out[id] = {
         w: m.curW, d: m.curD, base: m.curBase, h: m.current, target: m.target,
+        bottom: m.bar.position.y,   // 柱体底部世界 y（几何体底部在本地原点）
+        capTop: m.cap.position.y + 0.11,  // 键帽顶面世界 y
       };
     }
   }
