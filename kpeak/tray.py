@@ -62,6 +62,7 @@ WS_POPUP = 0x80000000
 SW_SHOW = 5
 SW_HIDE = 0
 
+ID_SHOW = 40000
 ID_OPEN = 40001
 ID_DATA = 40002
 ID_EXIT = 40003
@@ -234,16 +235,19 @@ def _ensure_icon() -> str:
 # ---------------------------------------------------------------------------
 
 class TrayIcon:
-    def __init__(self, on_open: object, on_quit: object, on_data: object | None = None):
-        """on_open/on_quit/on_data：菜单回调（无参或单参函数）。"""
+    def __init__(self, on_open: object, on_quit: object, on_data: object | None = None, on_show: object | None = None):
+        """on_open/on_quit/on_data/on_show：菜单回调（无参或单参函数）。
+        on_show：显示控制窗口（双击托盘图标或菜单「显示控制窗口」）。"""
         self.on_open = on_open
         self.on_quit = on_quit
         self.on_data = on_data
+        self.on_show = on_show
         self._hwnd = None
         self._icon = None
         self._nid = None
         self._thread: threading.Thread | None = None
         self._active = threading.Event()
+        self._menu_show = ID_SHOW
         self._menu_open = ID_OPEN
         self._menu_data = ID_DATA
         self._menu_exit = ID_EXIT
@@ -258,11 +262,13 @@ class TrayIcon:
                 self._show_menu()
                 return 0
             if lparam == WM_LBUTTONDBLCLK:
-                self._call(self.on_open)
+                self._call(self.on_show or self.on_open)
                 return 0
         elif msg == WM_COMMAND:
             cmd = wparam & 0xFFFF
-            if cmd == ID_OPEN:
+            if cmd == ID_SHOW:
+                self._call(self.on_show or self.on_open)
+            elif cmd == ID_OPEN:
                 self._call(self.on_open)
             elif cmd == ID_DATA:
                 self._call(self.on_data)
@@ -316,6 +322,7 @@ class TrayIcon:
     def _show_menu(self) -> None:
         """弹出右键菜单。"""
         hMenu = user32.CreatePopupMenu()
+        user32.AppendMenuW(hMenu, MF_STRING, ID_SHOW, "显示控制窗口")
         user32.AppendMenuW(hMenu, MF_STRING, ID_OPEN, "打开可视化页面")
         user32.AppendMenuW(hMenu, MF_STRING, ID_DATA, "打开数据目录")
         user32.AppendMenuW(hMenu, MF_SEPARATOR, 0, None)

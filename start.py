@@ -42,6 +42,7 @@ from kpeak.config import DEFAULT_PORT, DATA_FILE, DATA_DIR, HOST
 from kpeak.server import AppServer, EventHub
 from kpeak.store import KeyStore
 from kpeak.tray import TrayIcon
+from kpeak.window import ControlWindow
 
 # 日志：控制台显示 INFO，简洁格式
 logging.basicConfig(
@@ -139,11 +140,12 @@ def main() -> int:
     else:
         collector = KeyCollector(store, on_key=lambda kid: hub.publish({"key": kid, "ts": time.time()}))
 
-    # ---------- 系统托盘 ----------
+    # ---------- 系统托盘 + 控制窗口 ----------
     quit_event = threading.Event()
     tooltip_interval = 5.0
     url = server.url
     data_dir = store.data_file.parent
+    mode = "演示模式（模拟按键）" if args.demo else "全局监听模式"
 
     def _open_viz():
         webbrowser.open(url)
@@ -154,13 +156,46 @@ def main() -> int:
         except Exception:
             log.exception("cannot open data dir")
 
-    tray = TrayIcon(on_open=_open_viz, on_quit=lambda: quit_event.set(), on_data=_open_data)
+    def _exit_app():
+        quit_event.set()
+
+    def _window_snapshot() -> dict:
+        """为控制窗口提供增强快照（含模式/URL/数据路径）。"""
+        snap = store.snapshot()
+        snap["mode"] = mode
+        snap["url"] = url
+        snap["data"] = str(store.data_file)
+        snap["rate"] = compute_rate()
+        return snap
+
+    def compute_rate() -> float:
+        """近 60 秒实时速率（键/分）：从 recent 时间戳计算。"""
+        now = time.time()
+        recent = store.recent
+        # store.recent 是 deque[(id, ts)]
+        cutoff = now - 60.0
+        n = sum(1 for _, ts in recent if ts >= cutoff)
+        return n
+
+    ctrl_win = ControlWindow(
+        get_snapshot=_window_snapshot,
+        open_viz=_open_viz,
+        open_data=_open_data,
+        on_exit=_exit_app,
+    )
+    tray = TrayIcon(
+        on_open=_open_viz,
+        on_quit=_exit_app,
+        on_data=_open_data,
+        on_show=ctrl_win.show,  # 双击托盘 / 菜单「显示控制窗口」→ 弹出控制窗口
+    )
 
     def _cleanup():
         log.info("shutting down ...")
         if collector is not None:
             collector.stop()
         stop_demo.set()
+        ctrl_win.stop()
         tray.stop()
         store.flush()
         server.stop()
@@ -170,23 +205,23 @@ def main() -> int:
     server.start()
     if collector is not None:
         collector.start()
+    ctrl_win.start()
     tray.start()
     log.info("数据文件: %s", store.data_file)
     log.info("历史累计按键: %d 次（%d 种按键）", store.total, len(store.counts))
     log.info("可视化页面: %s", server.url)
-    log.info("系统托盘已常驻：右键菜单可打开页面 / 数据目录 / 退出")
+    log.info("控制窗口 + 系统托盘已就绪：托盘右键「显示控制窗口」或双击图标")
 
     if not args.no_browser:
         threading.Timer(0.6, lambda: webbrowser.open(server.url)).start()
 
-    mode = "演示模式（模拟按键）" if args.demo else "全局监听模式"
     print()
     print("=" * 58)
     print("  keyboard-peak · 键盘按键三维可视化")
     print(f"  模式: {mode}")
     print(f"  可视化页面: {server.url}")
-    print("  托盘图标已常驻：右键可打开页面或退出")
-    print("  源码运行按 Ctrl+C 停止；打包版从托盘退出")
+    print("  托盘图标已常驻：右键「显示控制窗口」/ 打开页面 / 退出")
+    print("  源码运行按 Ctrl+C 停止；打包版从托盘或控制窗口退出")
     print("=" * 58)
     print()
 

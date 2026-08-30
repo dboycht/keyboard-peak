@@ -21,7 +21,8 @@
   - 近 60 分钟活跃趋势折线图；
   - Top 10 高频按键排行；
   - 最近按键流水条。
-- **系统托盘常驻（零依赖实现）**：运行后自动驻留托盘图标，**右键菜单**可打开可视化页面 / 打开数据目录 / **退出**；双击图标打开页面，气泡提示实时显示累计按键数 —— 不再「静默关不掉」。
+- **控制中心窗口（tkinter）**：启动即显示，实时显示运行状态（累计/今日/速率/模式/地址/数据路径），按钮一键「打开可视化页面 / 打开数据目录 / 退出程序」；点窗口 X 最小化到托盘（不退出）。
+- **系统托盘常驻（零依赖实现）**：托盘右键菜单「显示控制窗口 / 打开可视化页面 / 打开数据目录 / 退出」；双击图标弹出控制窗口，气泡提示实时显示累计按键数 —— 不再「静默关不掉」。
 - **数据跨会话累积**：自动保存 JSON，重启软件历史数据不丢失。
 
 ## 🚀 快速开始
@@ -40,7 +41,7 @@ python start.py --data D:/my/keylog.json   # 自定义数据文件
 python start.py --demo           # 演示模式：模拟按键，不碰真实键盘
 ```
 
-按 `Ctrl+C` 停止记录（源码运行）；**打包版从托盘右键「退出」关闭**，数据自动落盘保存。
+按 `Ctrl+C` 停止记录（源码运行）；**打包版从托盘右键或控制窗口「退出程序」关闭**，数据自动落盘保存。
 
 ### 📦 编译打包（可选）
 
@@ -50,7 +51,7 @@ python start.py --demo           # 演示模式：模拟按键，不碰真实键
 # 安装 PyInstaller（如未安装）
 pip install pyinstaller
 
-# 打包（产物：dist/keyboard-peak.exe ≈ 8.9 MB，无需 Python 环境即可运行）
+# 打包（产物：dist/keyboard-peak.exe ≈ 11.8 MB，无需 Python 环境即可运行）
 python -m PyInstaller start.py --onefile --name keyboard-peak --noconsole --clean ^
   --collect-all pynput --add-data "web;web" --add-data "kpeak;kpeak" -y
 

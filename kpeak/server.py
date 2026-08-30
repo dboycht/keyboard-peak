@@ -72,6 +72,18 @@ class AppHandler(BaseHTTPRequestHandler):
     web_dir: Path = WEB_DIR
 
     # ------------------------------------------------------------------
+    # 连接异常静默处理
+    # ------------------------------------------------------------------
+
+    def handle_one_request(self):
+        """覆盖：读取请求行阶段的连接异常（浏览器关页/断线）视为正常，不打印 traceback。"""
+        try:
+            super().handle_one_request()
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
+            # 客户端主动断开（关闭标签页/刷新/杀进程）——正常现象，静默忽略
+            pass
+
+    # ------------------------------------------------------------------
     # 工具
     # ------------------------------------------------------------------
 
