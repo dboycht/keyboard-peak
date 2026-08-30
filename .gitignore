@@ -8,6 +8,11 @@ __pycache__/
 .venv/
 venv/
 
+# ---------- PyInstaller 打包产物（仅实验，不入库） ----------
+build/
+dist/
+*.spec
+
 # ---------- 开发过程截图（仅保留 README 引用的最终效果图） ----------
 docs/screenshot_1.png
 docs/screenshot_2.png

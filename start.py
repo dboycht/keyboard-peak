@@ -41,6 +41,7 @@ from kpeak.collector import KeyCollector
 from kpeak.config import DEFAULT_PORT, DATA_FILE, DATA_DIR, HOST
 from kpeak.server import AppServer, EventHub
 from kpeak.store import KeyStore
+from kpeak.tray import TrayIcon
 
 # 日志：控制台显示 INFO，简洁格式
 logging.basicConfig(
@@ -138,11 +139,29 @@ def main() -> int:
     else:
         collector = KeyCollector(store, on_key=lambda kid: hub.publish({"key": kid, "ts": time.time()}))
 
+    # ---------- 系统托盘 ----------
+    quit_event = threading.Event()
+    tooltip_interval = 5.0
+    url = server.url
+    data_dir = store.data_file.parent
+
+    def _open_viz():
+        webbrowser.open(url)
+
+    def _open_data():
+        try:
+            os.startfile(str(data_dir))  # 资源管理器打开数据目录
+        except Exception:
+            log.exception("cannot open data dir")
+
+    tray = TrayIcon(on_open=_open_viz, on_quit=lambda: quit_event.set(), on_data=_open_data)
+
     def _cleanup():
         log.info("shutting down ...")
         if collector is not None:
             collector.stop()
         stop_demo.set()
+        tray.stop()
         store.flush()
         server.stop()
 
@@ -151,9 +170,11 @@ def main() -> int:
     server.start()
     if collector is not None:
         collector.start()
+    tray.start()
     log.info("数据文件: %s", store.data_file)
     log.info("历史累计按键: %d 次（%d 种按键）", store.total, len(store.counts))
     log.info("可视化页面: %s", server.url)
+    log.info("系统托盘已常驻：右键菜单可打开页面 / 数据目录 / 退出")
 
     if not args.no_browser:
         threading.Timer(0.6, lambda: webbrowser.open(server.url)).start()
@@ -164,17 +185,25 @@ def main() -> int:
     print("  keyboard-peak · 键盘按键三维可视化")
     print(f"  模式: {mode}")
     print(f"  可视化页面: {server.url}")
-    print("  按 Ctrl+C 停止记录并保存数据")
+    print("  托盘图标已常驻：右键可打开页面或退出")
+    print("  源码运行按 Ctrl+C 停止；打包版从托盘退出")
     print("=" * 58)
     print()
 
     try:
-        while True:
-            time.sleep(1.0)
+        last_tip = 0.0
+        while not quit_event.is_set():
+            time.sleep(0.5)
             if collector is not None and collector.running is False:
                 log.warning("listener stopped unexpectedly")
             # 周期落盘（flush 内部有 dirty 检查，非脏时零开销）
             store.flush()
+            # 定期更新托盘提示（累计按键数）
+            now = time.time()
+            if now - last_tip >= tooltip_interval:
+                last_tip = now
+                tip = f"keyboard-peak · 已记录 {store.total:,} 次按键"
+                tray.set_tooltip(tip)
     except KeyboardInterrupt:
         log.info("收到 Ctrl+C")
     finally:
