@@ -109,6 +109,35 @@ html, body {
   #modeSwitch { left: 50%; top: 70px; transform: translateX(-50%); }
 }
 
+/* ---------------- 采集控制（暂停按钮） ---------------- */
+
+#ctrlBar {
+  position: fixed; top: 18px; right: 150px;
+  z-index: 15;
+  display: flex;
+}
+.ctrl-btn {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  backdrop-filter: blur(10px);
+  color: var(--text);
+  font-size: 13px; font-family: inherit;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  transition: all 0.25s ease;
+}
+.ctrl-btn:hover { border-color: rgba(120,140,255,0.4); background: rgba(20,24,52,0.85); }
+.ctrl-btn .pause-icon { font-size: 15px; line-height: 1; }
+.ctrl-btn.paused { border-color: rgba(255,200,87,0.5); color: var(--warn); }
+.ctrl-btn.paused .pause-icon { color: var(--warn); }
+
+@media (max-width: 900px) {
+  #ctrlBar { top: 110px; right: 12px; }
+}
+
 @keyframes pulse {
   0%, 100% { box-shadow: 0 0 4px #34d399; }
   50% { box-shadow: 0 0 14px #34d399; }

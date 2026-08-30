@@ -18,6 +18,7 @@ tkinter/Tcl 对象只能在创建它的线程中访问。本窗口在独立线�
 
 from __future__ import annotations
 
+import ctypes
 import json
 import logging
 import os
@@ -26,6 +27,30 @@ import threading
 import time
 import tkinter as tk
 from tkinter import ttk
+
+# ---------------------------------------------------------------------------
+# 高 DPI 支持：必须在创建任何 Tk 窗口之前调用，否则界面在高分屏上模糊
+# ---------------------------------------------------------------------------
+
+def _enable_dpi_awareness() -> None:
+    """启用 Windows 高 DPI 感知（Per-Monitor V2），让 tkinter 在高分屏清晰渲染。"""
+    if os.name != "nt":
+        return
+    try:
+        # Windows 10 1809+：Per-Monitor V2（最佳）
+        ctypes.windll.user32.SetProcessDpiAwarenessContext(-4)  # DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+    except Exception:
+        try:
+            # 旧版 Windows：System DPI Aware
+            ctypes.windll.shcore.SetProcessDpiAwareness(1)  # PROCESS_SYSTEM_DPI_AWARE
+        except Exception:
+            try:
+                ctypes.windll.user32.SetProcessDPIAware()
+            except Exception:
+                pass
+
+
+_enable_dpi_awareness()
 
 log = logging.getLogger("kpeak.window")
 
@@ -90,12 +115,21 @@ class ControlWindow:
             self._refresh()
             self._poll_cmds()
             self._root.mainloop()
-            # mainloop 退出（quit 指令）→ 销毁窗口并释放 tk 对象引用
+            # mainloop 退出（quit 指令）→ 先释放 tk 对象引用，再销毁窗口
+            # 顺序关键：必须先清变量（此时 tk 解释器仍存活），再 destroy，
+            # 否则 Variable.__del__ 在 root 销毁后访问已死的 Tcl 会报错
+            for v in self._vars.values():
+                try:
+                    v.get()
+                except Exception:
+                    pass
+            self._vars.clear()
+            self._notify_var = None
+            self._daily_var = None
             try:
                 self._root.destroy()
             except Exception:
                 pass
-            self._vars.clear()
             self._root = None
         except Exception:
             log.exception("control window error")
@@ -193,12 +227,15 @@ class ControlWindow:
                  font=("Microsoft YaHei UI", 11, "bold")).grid(row=0, column=0, columnspan=2, sticky="w", padx=16, pady=(12, 2))
 
         self._notify_var = tk.BooleanVar(value=bool(self.settings.get("notify_enabled", True)))
+        self._daily_var = tk.BooleanVar(value=bool(self.settings.get("notify_daily", False)))
+        # 统一登记到 _vars，便于退出时一次性清理（避免主线程 GC 触发 __del__ 报错）
+        self._vars["notify"] = self._notify_var
+        self._vars["daily"] = self._daily_var
         tk.Checkbutton(card, text="右下角通知推送（启动 / 停止 / 暂停通知）",
                        variable=self._notify_var, bg=CARD, fg=FG, activebackground=CARD,
                        activeforeground=FG, selectcolor="#1c2450", font=("Microsoft YaHei UI", 9),
                        command=self._on_notify_toggle).grid(row=1, column=0, columnspan=2, sticky="w", padx=16, pady=3)
 
-        self._daily_var = tk.BooleanVar(value=bool(self.settings.get("notify_daily", False)))
         tk.Checkbutton(card, text="每日统计摘要通知",
                        variable=self._daily_var, bg=CARD, fg=FG, activebackground=CARD,
                        activeforeground=FG, selectcolor="#1c2450", font=("Microsoft YaHei UI", 9),
@@ -346,14 +383,17 @@ class ControlWindow:
     # ------------------------------------------------------------------
 
     def _poll_cmds(self) -> None:
-        if self._root is None or self._stopping.is_set():
+        if self._root is None:
             return
+        # 注意：不因 _stopping 提前 return —— 必须消费队列中的 quit 指令
         try:
             while True:
                 cmd = self._cmds.get_nowait()
                 self._exec_cmd(cmd)
         except queue_mod.Empty:
             pass
+        if self._stopping.is_set():
+            return  # 已处理 quit（_exec_cmd 会调用 root.quit()）
         self._root.after(150, self._poll_cmds)
 
     def _exec_cmd(self, cmd) -> None:
@@ -382,15 +422,12 @@ class ControlWindow:
     def stop(self) -> None:
         """完全关闭窗口线程。
 
-        tkinter 的 after() 可在跨线程调用（官方线程安全），这里直接投递
-        quit 到 tk 线程，避免依赖 150ms 轮询延迟。
+        通过命令队列发 'quit'，由 tk 线程在轮询时自行退出 —— 不做跨线程
+        after 调用（跨线程 after 会注册 Tcl async handler，退出时触发
+        "Tcl_AsyncDelete: async handler deleted by the wrong thread"）。
         """
         self._stopping.set()
-        try:
-            if self._root is not None:
-                self._root.after(0, self._root.quit)
-        except Exception:
-            pass
+        self._cmds.put("quit")
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=3.0)
 

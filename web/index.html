@@ -41,6 +41,14 @@
     <button class="mode-btn" data-mode="heat" title="纯热力着色，无柱子">热力图</button>
   </div>
 
+  <!-- ============ 采集控制 ============ -->
+  <div id="ctrlBar">
+    <button class="ctrl-btn" id="pauseBtn" title="暂停/恢复按键采集">
+      <span class="pause-icon" id="pauseIcon">⏸</span>
+      <span id="pauseText">暂停采集</span>
+    </button>
+  </div>
+
   <!-- ============ 左侧统计面板 ============ -->
   <aside id="panel">
     <section class="card">
@@ -77,7 +85,7 @@
 
   <!-- ============ 右下角操作提示 ============ -->
   <footer id="hint">
-    <p>🖱 拖拽旋转 &nbsp;·&nbsp; 滚轮缩放 &nbsp;·&nbsp; 右键平移</p>
+    <p>🖱 左键旋转 · <b>Shift+左键拖动</b>平移 · 滚轮缩放 · 右键平移</p>
     <p class="dim">柱子高度 = 按键使用频率（√尺度）</p>
   </footer>
 

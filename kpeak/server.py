@@ -59,7 +59,7 @@ class EventHub:
 
 
 class AppHandler(BaseHTTPRequestHandler):
-    server_version = "keyboard-peak/1.0.3"
+    server_version = "keyboard-peak/1.0.4"
     protocol_version = "HTTP/1.1"
 
     # 静默访问日志（避免 stderr 噪声）
@@ -70,6 +70,7 @@ class AppHandler(BaseHTTPRequestHandler):
     store = None
     hub: EventHub | None = None
     web_dir: Path = WEB_DIR
+    pause_callback = None  # 可选：暂停/恢复回调，返回新暂停状态
 
     # ------------------------------------------------------------------
     # 连接异常静默处理
@@ -134,6 +135,29 @@ class AppHandler(BaseHTTPRequestHandler):
                 self._handle_sse()
             elif path.startswith("/static/"):
                 self._send_file(path[len("/static/"):])
+            else:
+                self.send_error(404, "Not Found")
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+    def do_POST(self) -> None:
+        path = self.path.split("?", 1)[0]
+        try:
+            # 读取请求体（兼容带 body 或不带）
+            length = int(self.headers.get("Content-Length") or 0)
+            if length > 0:
+                self.rfile.read(length)
+            if path == "/api/pause-toggle":
+                if self.pause_callback is None:
+                    self._send_json({"error": "pause unavailable"}, 500)
+                else:
+                    paused = self.pause_callback()
+                    if self.store is not None:
+                        # 同步到持久层状态（快照会反映暂停）
+                        self.store.set_paused(bool(paused))
+                    self._send_json({"paused": bool(paused), "total": self.store.total if self.store else 0})
+            elif path == "/api/settings":
+                self._send_json({"ok": True})
             else:
                 self.send_error(404, "Not Found")
         except (BrokenPipeError, ConnectionResetError):

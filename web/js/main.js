@@ -65,6 +65,7 @@ function applySnapshot(snap) {
   totalCount = snap.total || 0;
   todayTotal = snap.today_total || 0;
   ui.applySnapshot(snap);
+  setPausedUI(snap.paused);
   UI_rateRefresh();
   ui.setWatermarkHidden(Object.keys(counts).length > 0);
 }
@@ -155,6 +156,36 @@ scene.addAnimation((dt) => {
 setTimeout(() => {
   if (Object.keys(counts).length > 0) ui.setWatermarkHidden(true);
 }, 5000);
+
+// ---------------------------------------------------------------- 采集暂停控制
+
+const pauseBtn = document.getElementById('pauseBtn');
+const pauseText = document.getElementById('pauseText');
+const pauseIcon = document.getElementById('pauseIcon');
+let paused = false;
+
+function setPausedUI(p) {
+  paused = !!p;
+  pauseBtn.classList.toggle('paused', paused);
+  pauseText.textContent = paused ? '恢复采集' : '暂停采集';
+  pauseIcon.textContent = paused ? '▶' : '⏸';
+}
+
+async function togglePause() {
+  pauseBtn.disabled = true;
+  try {
+    const resp = await fetch('/api/pause-toggle', { method: 'POST' });
+    const data = await resp.json();
+    setPausedUI(data && data.paused);
+  } catch (e) {
+    // 失败：刷新快照以同步真实状态
+    fetch('/snapshot').then((r) => r.json()).then((snap) => setPausedUI(snap.paused));
+  } finally {
+    pauseBtn.disabled = false;
+  }
+}
+
+pauseBtn.addEventListener('click', togglePause);
 
 // ---------------------------------------------------------------- 显示模式切换
 

@@ -99,10 +99,14 @@ def _demo_gen():
 
 
 def _run_demo(store, hub, stop_event: threading.Event) -> None:
-    """演示模式线程：按打字节奏发布随机按键事件。"""
+    """演示模式线程：按打字节奏发布随机按键事件（遵循暂停状态）。"""
     gen = _demo_gen()
     # 有间歇的节奏：平均约 90 键/分
     while not stop_event.is_set():
+        # 暂停时等待，不生成新按键
+        if store.paused:
+            stop_event.wait(0.2)
+            continue
         key = next(gen)
         store.record(key)
         hub.publish({"key": key, "ts": time.time()})
@@ -169,14 +173,18 @@ def main() -> int:
             tray.notify(title, text, flags)
 
     def _toggle_pause():
-        """暂停/恢复采集（托盘菜单切换）。"""
-        if collector is None:
-            return  # 演示模式不支持暂停
-        paused = collector.set_paused(not collector.paused)
+        """暂停/恢复采集（托盘菜单/网页端切换）。返回切换后的暂停状态。"""
+        if collector is not None:
+            paused = collector.set_paused(not collector.paused)
+        else:
+            # 演示模式：直接切换 store 的 paused 状态（demo 线程会遵循暂停）
+            paused = not store.paused
+            store.set_paused(paused)
         tray.paused = paused
         state = "已暂停" if paused else "已恢复"
         _notify("keyboard-peak", f"按键采集{state}", 2 if paused else 1)
         log.info("采集%s", "暂停" if paused else "恢复")
+        return paused
 
     def _window_snapshot() -> dict:
         """为控制窗口提供增强快照（含模式/URL/数据路径/暂停状态）。"""
@@ -225,6 +233,12 @@ def main() -> int:
         server.stop()
 
     atexit.register(_cleanup)
+
+    # 网页端暂停接口：把 HTTP 回调接到采集控制
+    # 注意：赋给类属性的普通函数会被当作实例方法绑定（自动传 self），
+    # 必须用 staticmethod 包装，否则回调调用时多一个参数报错
+    from kpeak.server import AppHandler
+    AppHandler.pause_callback = staticmethod(lambda: _toggle_pause())
 
     server.start()
     if collector is not None:
