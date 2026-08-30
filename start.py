@@ -276,18 +276,22 @@ def main() -> int:
 
     try:
         last_tip = 0.0
+        last_flush = 0.0
+        last_total = -1
         while not quit_event.is_set():
-            time.sleep(0.5)
+            time.sleep(1.0)  # 低频唤醒，降低后台 CPU 占用
             if collector is not None and collector.running is False:
                 log.warning("listener stopped unexpectedly")
-            # 周期落盘（flush 内部有 dirty 检查，非脏时零开销）
-            store.flush()
-            # 定期更新托盘提示（累计按键数）
+            # 周期落盘（每 3 秒一次；flush 内部有 dirty 检查，非脏时零开销）
             now = time.time()
-            if now - last_tip >= tooltip_interval:
+            if now - last_flush >= 3.0:
+                last_flush = now
+                store.flush()
+            # 托盘提示：仅在累计数变化时更新（避免每 5 秒无条件 Shell 调用）
+            if store.total != last_total and now - last_tip >= tooltip_interval:
+                last_total = store.total
                 last_tip = now
-                tip = f"keyboard-peak · 已记录 {store.total:,} 次按键"
-                tray.set_tooltip(tip)
+                tray.set_tooltip(f"keyboard-peak · 已记录 {store.total:,} 次按键")
     except KeyboardInterrupt:
         log.info("收到 Ctrl+C")
     finally:

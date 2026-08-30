@@ -464,6 +464,14 @@ class ControlWindow:
         if self._root is None or self._stopping.is_set():
             return
         try:
+            # 窗口隐藏（最小化到托盘）时完全暂停刷新，省 CPU
+            if not self._root.winfo_viewable():
+                if self._root is not None:
+                    self._root.after(2000, self._refresh)
+                return
+        except Exception:
+            pass
+        try:
             snap = self.get_snapshot() if self.get_snapshot else {}
         except Exception:
             snap = {}
@@ -480,15 +488,15 @@ class ControlWindow:
                 self._vars["data"].set(snap["data"])
         except Exception:
             pass
-        # 数据管理区概览/历史（每 2 秒刷新一次，避免频繁读盘）
+        # 数据管理区概览/历史（每 10 秒刷新一次，避免频繁读盘+排序）
         try:
-            if not getattr(self, "_last_data_refresh", 0) or time.time() - self._last_data_refresh >= 2.0:
+            if not getattr(self, "_last_data_refresh", 0) or time.time() - self._last_data_refresh >= 10.0:
                 self._last_data_refresh = time.time()
                 self._refresh_data()
         except Exception:
             pass
         if self._root is not None:
-            self._root.after(1000, self._refresh)
+            self._root.after(2000, self._refresh)  # 2 秒刷新一次
 
     # ------------------------------------------------------------------
     # 指令轮询（实现跨线程 show/hide/quit）
@@ -506,7 +514,7 @@ class ControlWindow:
             pass
         if self._stopping.is_set():
             return  # 已处理 quit（_exec_cmd 会调用 root.quit()）
-        self._root.after(150, self._poll_cmds)
+        self._root.after(500, self._poll_cmds)  # 500ms 低频轮询，命令响应足够快
 
     def _exec_cmd(self, cmd) -> None:
         if cmd == "show":
