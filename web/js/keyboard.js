@@ -105,9 +105,10 @@ export class Keyboard3D {
     this.group.add(cap);
     this.group.add(label);
 
-    // 显示模式相关：目标/当前宽度（经典=细柱，覆盖=铺满键帽）
-    const coverW = Math.max(wu * 0.94, 0.1);
-    const coverD = Math.max(hu * 0.94, 0.1);
+    // 显示模式相关：目标/当前宽度（经典=细柱，覆盖=铺满整个键位网格紧密贴合）
+    const coverW = Math.max(k.w * 1.0, 0.1);   // 覆盖整格：相邻柱子肩并肩无缝隙
+    const coverD = Math.max(k.h * 1.0, 0.1);
+    const coverBase = KEYCAP_TOP - 0.005;      // 基座贴键帽顶，完全盖住键帽
 
     return {
       id: k.id, cap, label, bar, tip, barMat,
@@ -117,7 +118,7 @@ export class Keyboard3D {
       hasData: false,
       // 模式参数
       classicW: BAR_WIDTH, classicD: BAR_DEPTH, classicBase: BAR_BASE,
-      coverW, coverD, coverBase: KEYCAP_TOP - 0.01,
+      coverW, coverD, coverBase,
       curW: BAR_WIDTH, curD: BAR_DEPTH, curBase: BAR_BASE,
     };
   }
@@ -187,20 +188,33 @@ export class Keyboard3D {
       const h = mesh.current + (mesh.target - mesh.current) * Math.min(1, GROW_SPEED * dt);
       mesh.current = h;
 
-      if (isHeat || h < 0.01) {
-        // 纯热力模式或空柱：隐藏柱体与光点
+      if (isHeat) {
+        // 纯热力模式：隐藏柱体与光点
+        mesh.bar.visible = false;
+        mesh.tip.visible = false;
+      } else if (mode === 'cover' && h <= 0.001) {
+        // 覆盖模式：count=0 也保留统一矮底座（可见），保证整片键盘柱子连续贴合
+        mesh.bar.visible = true;
+        mesh.tip.visible = false;
+        mesh.bar.scale.y = 0.12;
+        mesh.bar.scale.x = mesh.curW;
+        mesh.bar.scale.z = mesh.curD;
+        const base = mesh.curBase;
+        mesh.bar.position.y = base + 0.06;
+      } else if (h < 0.01) {
+        // 经典模式空柱：隐藏
         mesh.bar.visible = false;
         mesh.tip.visible = false;
       } else {
         mesh.bar.visible = true;
         mesh.tip.visible = true;
-        mesh.bar.scale.y = h;
+        mesh.bar.scale.y = Math.max(h, mode === 'cover' ? 0.12 : 0);
         mesh.bar.scale.x = mesh.curW;
         mesh.bar.scale.z = mesh.curD;
         const base = mesh.curBase;
-        const mid = base + h / 2;
+        const mid = base + mesh.bar.scale.y / 2;
         mesh.bar.position.y = mid;
-        mesh.tip.position.y = base + h + 0.03;
+        mesh.tip.position.y = base + mesh.bar.scale.y + 0.03;
       }
 
       // ---- 键帽按压回弹 ----

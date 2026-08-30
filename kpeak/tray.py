@@ -400,17 +400,20 @@ class TrayIcon:
             log.info("tray icon removed")
 
     def set_tooltip(self, text: str) -> None:
-        """更新气泡提示文本（NIM_MODIFY）。"""
+        """更新托盘悬停提示文本（仅 NIF_TIP，不弹气泡）。
+
+        注意：绝不能带 NIF_INFO / szInfo —— 那会导致每条 tooltip 都弹一个
+        右下角气泡通知（曾由此导致「关闭通知设置后仍持续弹通知」）。
+        """
         if self._nid is None or not self._active.is_set():
             return
         try:
             nid = self._nid
-            nid.uFlags = NIF_TIP | NIF_INFO
-            nid.szInfoTitle = "keyboard-peak"
-            nid.dwInfoFlags = 0
-            truncated = text[:120]
-            nid.szTip = truncated
-            nid.szInfo = truncated
+            nid.uFlags = NIF_TIP
+            nid.szTip = text[:127]
+            # 清空气泡残留字段，防止旧气泡被重复触发
+            nid.szInfo = ""
+            nid.szInfoTitle = ""
             shell32.Shell_NotifyIconW(NIM_MODIFY, ctypes.byref(nid))
         except Exception:
             pass
@@ -420,6 +423,7 @@ class TrayIcon:
 
         info_flags：NIIF_NONE=0 / NIIF_INFO=1 / NIIF_WARNING=2 / NIIF_ERROR=3
         可从任意线程调用（通过会话内队列转发到托盘线程）。
+        注意：本方法才会弹气泡；只有它受设置开关（notify_enabled）控制。
         """
         if self._nid is None or not self._active.is_set():
             return
