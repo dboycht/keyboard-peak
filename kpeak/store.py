@@ -36,6 +36,7 @@ class KeyStore:
         self.minutes: deque[dict] = deque(maxlen=MINUTE_BUCKETS_MAX)
         self._dirty = False
         self._total = 0
+        self._paused = False
         self._loaded_at = time.time()
         self._load()
 
@@ -129,6 +130,7 @@ class KeyStore:
                 spark.append({"t": t, "n": minute_map.get(t, 0)})
             return {
                 "total": self._total,
+                "paused": self._paused,
                 "counts": dict(self.counts),
                 "today": today_counts,
                 "today_total": sum(today_counts.values()),
@@ -141,3 +143,65 @@ class KeyStore:
     def total(self) -> int:
         with self._lock:
             return self._total
+
+    def set_paused(self, paused: bool) -> None:
+        with self._lock:
+            self._paused = bool(paused)
+
+    @property
+    def paused(self) -> bool:
+        with self._lock:
+            return self._paused
+
+    # ------------------------------------------------------------------
+    # 导出 / 导入
+    # ------------------------------------------------------------------
+
+    def export_data(self) -> dict:
+        """导出完整统计数据（用于备份/迁移）。"""
+        with self._lock:
+            return {
+                "app": "keyboard-peak",
+                "version": DATA_VERSION,
+                "exported_at": time.time(),
+                "total": self._total,
+                "counts": dict(self.counts),
+                "daily": {d: dict(kv) for d, kv in self.daily.items()},
+                "recent": list(self.recent),
+                "minutes": [dict(m) for m in self.minutes],
+            }
+
+    def import_data(self, payload: dict, merge: bool = True) -> dict:
+        """导入统计数据。
+
+        merge=True  → 把导入的 counts 累加到现有数据（daily 按天累加）
+        merge=False → 覆盖现有数据（以导入内容为准）
+        返回 {"ok": bool, "message": str, "imported": int}
+        """
+        if not isinstance(payload, dict) or "counts" not in payload:
+            return {"ok": False, "message": "无效的数据文件：缺少 counts"}
+        import_counts = {k: int(v) for k, v in payload.get("counts", {}).items() if int(v) > 0}
+        import_daily = payload.get("daily") or {}
+        with self._lock:
+            if not merge:
+                # 覆盖模式
+                self.counts = dict(import_counts)
+                self.daily = {}
+                self.recent = deque(maxlen=RECENT_KEYS_MAX)
+                self.minutes = deque(maxlen=MINUTE_BUCKETS_MAX)
+                for day, kv in import_daily.items():
+                    self.daily[day] = {k: int(v) for k, v in kv.items() if int(v) > 0}
+                self._total = sum(self.counts.values())
+            else:
+                # 合并模式：累加
+                for k, v in import_counts.items():
+                    self.counts[k] = self.counts.get(k, 0) + v
+                for day, kv in import_daily.items():
+                    d = self.daily.setdefault(day, {})
+                    for k, v in kv.items():
+                        d[k] = d.get(k, 0) + int(v)
+                self._total = sum(self.counts.values())
+            self._dirty = True
+        self.flush()
+        imported = sum(import_counts.values())
+        return {"ok": True, "message": f"导入成功（{'合并' if merge else '覆盖'}，{imported} 次按键）", "imported": imported}

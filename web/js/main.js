@@ -156,8 +156,35 @@ setTimeout(() => {
   if (Object.keys(counts).length > 0) ui.setWatermarkHidden(true);
 }, 5000);
 
+// ---------------------------------------------------------------- 显示模式切换
+
+const MODE_KEY = 'kpeak-bar-mode';
+const MODES = ['classic', 'cover', 'heat'];
+
+function applyMode(mode) {
+  if (!MODES.includes(mode)) mode = 'classic';
+  keyboard.setMode(mode);
+  // 更新按钮高亮
+  document.querySelectorAll('.mode-btn').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.mode === mode);
+  });
+  try { localStorage.setItem(MODE_KEY, mode); } catch (e) {}
+}
+
+// 初始化模式（优先 localStorage，其次服务端设置）
+function initMode() {
+  let mode = null;
+  try { mode = localStorage.getItem(MODE_KEY); } catch (e) {}
+  if (!mode || !MODES.includes(mode)) mode = 'classic';
+  applyMode(mode);
+  document.querySelectorAll('.mode-btn').forEach((btn) => {
+    btn.addEventListener('click', () => applyMode(btn.dataset.mode));
+  });
+}
+
 // ---------------------------------------------------------------- 启动
 
+initMode();
 connect();
 scene.start();
 

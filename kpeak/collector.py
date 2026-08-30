@@ -23,10 +23,14 @@ class KeyCollector:
         self.on_key = on_key
         self._listener: keyboard.Listener | None = None
         self._running = threading.Event()
+        self._paused = False
+        self._pause_lock = threading.Lock()
 
     # ------------------------------------------------------------------
 
     def _on_press(self, key) -> None:
+        if self._paused:
+            return  # 暂停采集：跳过记录与推送
         key_id = normalize_key(key)
         if key_id is None:
             return
@@ -39,6 +43,17 @@ class KeyCollector:
                 self.on_key(key_id)
             except Exception:
                 log.exception("on_key callback failed")
+
+    def set_paused(self, paused: bool) -> bool:
+        """暂停/恢复采集。返回切换后的状态。"""
+        with self._pause_lock:
+            self._paused = bool(paused)
+            self.store.set_paused(self._paused)
+            return self._paused
+
+    @property
+    def paused(self) -> bool:
+        return self._paused
 
     def start(self) -> None:
         """启动全局监听（阻塞线程内运行）。"""

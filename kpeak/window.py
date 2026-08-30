@@ -18,10 +18,12 @@ tkinter/Tcl 对象只能在创建它的线程中访问。本窗口在独立线�
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import queue as queue_mod
 import threading
+import time
 import tkinter as tk
 from tkinter import ttk
 
@@ -43,13 +45,19 @@ BUTTON_STYLE = {
 
 
 class ControlWindow:
-    def __init__(self, get_snapshot, open_viz=None, open_data=None, on_exit=None):
+    def __init__(self, get_snapshot, open_viz=None, open_data=None, on_exit=None,
+                 settings=None, export_data=None, import_data=None):
         """get_snapshot: 可调用，返回 {total, today_total, ...}（线程安全）。
-        open_viz / open_data / on_exit：按钮回调（在 tk 线程内执行）。"""
+        open_viz / open_data / on_exit：按钮回调（在 tk 线程内执行）。
+        settings: Settings 对象（通知开关等，可空）。
+        export_data / import_data：数据导出/导入回调（在 tk 线程调用）。"""
         self.get_snapshot = get_snapshot
         self.open_viz = open_viz
         self.open_data = open_data
         self.on_exit = on_exit
+        self.settings = settings
+        self.export_data = export_data
+        self.import_data = import_data
         self._cmds: queue_mod.Queue = queue_mod.Queue()
         self._thread: threading.Thread | None = None
         self._ready = threading.Event()
@@ -161,12 +169,127 @@ class ControlWindow:
         tk.Label(root, text="关闭本窗口将最小化到托盘（不退出）；如需完全退出请点「退出程序」或托盘右键菜单",
                  bg=BG, fg=DIM, font=("Microsoft YaHei UI", 8)).grid(row=3, column=0, sticky="w", padx=16, pady=(0, 10))
 
+        self._build_settings_section(root, 4)
+        self._build_data_section(root, 5)
+
         # 居中
         root.update_idletasks()
         w, h = root.winfo_reqwidth(), root.winfo_reqheight()
         x = (root.winfo_screenwidth() - w) // 2
         y = (root.winfo_screenheight() - h) // 3
         root.geometry(f"+{x}+{y}")
+
+    # ---------------- 设置区：通知开关 ----------------
+
+    def _build_settings_section(self, root, row) -> None:
+        if self.settings is None:
+            return
+        card = tk.Frame(root, bg=CARD, bd=0, highlightthickness=1, highlightbackground="#1f2650")
+        card.grid(row=row, column=0, sticky="ew", padx=16, pady=4)
+        tk.Label(card, text="设置", bg=CARD, fg=ACCENT,
+                 font=("Microsoft YaHei UI", 11, "bold")).grid(row=0, column=0, columnspan=2, sticky="w", padx=16, pady=(12, 2))
+
+        self._notify_var = tk.BooleanVar(value=bool(self.settings.get("notify_enabled", True)))
+        tk.Checkbutton(card, text="右下角通知推送（启动 / 停止 / 暂停通知）",
+                       variable=self._notify_var, bg=CARD, fg=FG, activebackground=CARD,
+                       activeforeground=FG, selectcolor="#1c2450", font=("Microsoft YaHei UI", 9),
+                       command=self._on_notify_toggle).grid(row=1, column=0, columnspan=2, sticky="w", padx=16, pady=3)
+
+        self._daily_var = tk.BooleanVar(value=bool(self.settings.get("notify_daily", False)))
+        tk.Checkbutton(card, text="每日统计摘要通知",
+                       variable=self._daily_var, bg=CARD, fg=FG, activebackground=CARD,
+                       activeforeground=FG, selectcolor="#1c2450", font=("Microsoft YaHei UI", 9),
+                       command=self._on_daily_toggle).grid(row=2, column=0, columnspan=2, sticky="w", padx=16, pady=3)
+        card.grid_columnconfigure(1, weight=1)
+
+    def _on_notify_toggle(self) -> None:
+        if self.settings is not None:
+            self.settings.set("notify_enabled", bool(self._notify_var.get()))
+
+    def _on_daily_toggle(self) -> None:
+        if self.settings is not None:
+            self.settings.set("notify_daily", bool(self._daily_var.get()))
+
+    # ---------------- 数据区：导出 / 导入 ----------------
+
+    def _build_data_section(self, root, row) -> None:
+        if self.export_data is None and self.import_data is None:
+            return
+        card = tk.Frame(root, bg=CARD, bd=0, highlightthickness=1, highlightbackground="#1f2650")
+        card.grid(row=row, column=0, sticky="ew", padx=16, pady=4)
+        tk.Label(card, text="数据", bg=CARD, fg=ACCENT,
+                 font=("Microsoft YaHei UI", 11, "bold")).grid(row=0, column=0, columnspan=2, sticky="w", padx=16, pady=(12, 4))
+
+        btns = tk.Frame(card, bg=CARD)
+        btns.grid(row=1, column=0, columnspan=2, sticky="ew", padx=16, pady=(0, 10))
+        btns.grid_columnconfigure(0, weight=1)
+        btns.grid_columnconfigure(1, weight=1)
+
+        ttk.Button(btns, text="导出数据…", style="Accent.TButton",
+                   command=self._on_export).grid(row=0, column=0, sticky="ew", padx=4)
+        ttk.Button(btns, text="导入数据…", style="Accent.TButton",
+                   command=self._on_import).grid(row=0, column=1, sticky="ew", padx=4)
+
+    def _on_export(self) -> None:
+        from tkinter import filedialog
+        try:
+            path = filedialog.asksaveasfilename(
+                title="导出键盘统计数据",
+                defaultextension=".json",
+                initialfile=f"keyboard-peak-{time.strftime('%Y%m%d-%H%M%S')}.json",
+                filetypes=[("JSON 数据", "*.json"), ("所有文件", "*.*")],
+            )
+        except Exception:
+            return
+        if not path:
+            return
+        try:
+            payload = self.export_data() if self.export_data else {}
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+            self._notice(f"已导出到：\n{path}")
+        except Exception as e:
+            self._notice(f"导出失败：{e}", error=True)
+
+    def _on_import(self) -> None:
+        from tkinter import filedialog, messagebox
+        try:
+            path = filedialog.askopenfilename(
+                title="导入键盘统计数据",
+                filetypes=[("JSON 数据", "*.json"), ("所有文件", "*.*")],
+            )
+        except Exception:
+            return
+        if not path:
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+        except Exception as e:
+            self._notice(f"读取文件失败：{e}", error=True)
+            return
+        # 询问合并 or 覆盖
+        merge = messagebox.askyesno(
+            "导入方式",
+            "选择导入方式：\n\n「是」= 合并到现有数据（累加）\n「否」= 覆盖现有数据",
+        )
+        try:
+            if self.import_data:
+                result = self.import_data(payload, merge=merge)
+                self._notice(result.get("message", "导入完成"), error=not result.get("ok", True))
+        except Exception as e:
+            self._notice(f"导入失败：{e}", error=True)
+
+    def _notice(self, text: str, error: bool = False) -> None:
+        """底部提示（非模态，不阻塞窗口）。"""
+        try:
+            from tkinter import messagebox
+            if error:
+                messagebox.showerror("keyboard-peak", text, parent=self._root)
+            else:
+                messagebox.showinfo("keyboard-peak", text, parent=self._root)
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
     # 状态刷新（tk 线程内）

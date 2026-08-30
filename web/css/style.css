@@ -74,6 +74,41 @@ html, body {
 .live-badge.live .dot { background: #34d399; box-shadow: 0 0 10px #34d399; animation: pulse 1.6s infinite; }
 .live-badge.live { color: #b7ffd9; }
 
+/* ---------------- 显示模式切换 ---------------- */
+
+#modeSwitch {
+  position: fixed; top: 18px; left: 50%;
+  transform: translateX(-50%);
+  display: flex; gap: 6px;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  backdrop-filter: blur(10px);
+  z-index: 15;
+  box-shadow: var(--shadow);
+}
+.mode-btn {
+  border: none; cursor: pointer;
+  padding: 6px 16px;
+  border-radius: 999px;
+  font-size: 12px; letter-spacing: 1px;
+  color: var(--text-dim);
+  background: transparent;
+  transition: all 0.25s ease;
+  font-family: inherit;
+}
+.mode-btn:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+.mode-btn.active {
+  color: #05060f;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  font-weight: 600;
+}
+
+@media (max-width: 900px) {
+  #modeSwitch { left: 50%; top: 70px; transform: translateX(-50%); }
+}
+
 @keyframes pulse {
   0%, 100% { box-shadow: 0 0 4px #34d399; }
   50% { box-shadow: 0 0 14px #34d399; }

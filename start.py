@@ -40,6 +40,7 @@ if sys.platform == "win32":
 from kpeak.collector import KeyCollector
 from kpeak.config import DEFAULT_PORT, DATA_FILE, DATA_DIR, HOST
 from kpeak.server import AppServer, EventHub
+from kpeak.settings import Settings
 from kpeak.store import KeyStore
 from kpeak.tray import TrayIcon
 from kpeak.window import ControlWindow
@@ -140,6 +141,9 @@ def main() -> int:
     else:
         collector = KeyCollector(store, on_key=lambda kid: hub.publish({"key": kid, "ts": time.time()}))
 
+    # ---------- 设置 ----------
+    settings = Settings()
+
     # ---------- 系统托盘 + 控制窗口 ----------
     quit_event = threading.Event()
     tooltip_interval = 5.0
@@ -159,13 +163,29 @@ def main() -> int:
     def _exit_app():
         quit_event.set()
 
+    def _notify(title, text, flags=0):
+        """右下角通知（受设置开关控制）。"""
+        if settings.get("notify_enabled"):
+            tray.notify(title, text, flags)
+
+    def _toggle_pause():
+        """暂停/恢复采集（托盘菜单切换）。"""
+        if collector is None:
+            return  # 演示模式不支持暂停
+        paused = collector.set_paused(not collector.paused)
+        tray.paused = paused
+        state = "已暂停" if paused else "已恢复"
+        _notify("keyboard-peak", f"按键采集{state}", 2 if paused else 1)
+        log.info("采集%s", "暂停" if paused else "恢复")
+
     def _window_snapshot() -> dict:
-        """为控制窗口提供增强快照（含模式/URL/数据路径）。"""
+        """为控制窗口提供增强快照（含模式/URL/数据路径/暂停状态）。"""
         snap = store.snapshot()
         snap["mode"] = mode
         snap["url"] = url
         snap["data"] = str(store.data_file)
         snap["rate"] = compute_rate()
+        snap["settings"] = settings.all()
         return snap
 
     def compute_rate() -> float:
@@ -182,12 +202,16 @@ def main() -> int:
         open_viz=_open_viz,
         open_data=_open_data,
         on_exit=_exit_app,
+        settings=settings,
+        export_data=store.export_data,
+        import_data=store.import_data,
     )
     tray = TrayIcon(
         on_open=_open_viz,
         on_quit=_exit_app,
         on_data=_open_data,
         on_show=ctrl_win.show,  # 双击托盘 / 菜单「显示控制窗口」→ 弹出控制窗口
+        on_pause=_toggle_pause,
     )
 
     def _cleanup():
@@ -211,6 +235,13 @@ def main() -> int:
     log.info("历史累计按键: %d 次（%d 种按键）", store.total, len(store.counts))
     log.info("可视化页面: %s", server.url)
     log.info("控制窗口 + 系统托盘已就绪：托盘右键「显示控制窗口」或双击图标")
+
+    # 启动通知（受设置开关控制；托盘就绪后再发）
+    threading.Timer(0.8, lambda: _notify(
+        "keyboard-peak 已启动",
+        f"{mode} · 历史累计 {store.total:,} 次按键 · 已在托盘常驻",
+        1,
+    )).start()
 
     if not args.no_browser:
         threading.Timer(0.6, lambda: webbrowser.open(server.url)).start()
@@ -242,6 +273,8 @@ def main() -> int:
     except KeyboardInterrupt:
         log.info("收到 Ctrl+C")
     finally:
+        # 退出通知（受开关控制）
+        _notify("keyboard-peak 已停止", f"本次会话累计 {store.total:,} 次按键，数据已保存", 1)
         _cleanup()
     return 0
 

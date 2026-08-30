@@ -66,6 +66,11 @@ ID_SHOW = 40000
 ID_OPEN = 40001
 ID_DATA = 40002
 ID_EXIT = 40003
+ID_PAUSE = 40004
+
+# 菜单项显示文本（动态）
+MENU_PAUSED = "恢复采集"
+MENU_RUNNING = "暂停采集"
 
 user32 = ctypes.WinDLL("user32", use_last_error=True)
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -235,13 +240,16 @@ def _ensure_icon() -> str:
 # ---------------------------------------------------------------------------
 
 class TrayIcon:
-    def __init__(self, on_open: object, on_quit: object, on_data: object | None = None, on_show: object | None = None):
-        """on_open/on_quit/on_data/on_show：菜单回调（无参或单参函数）。
-        on_show：显示控制窗口（双击托盘图标或菜单「显示控制窗口」）。"""
+    def __init__(self, on_open: object, on_quit: object, on_data: object | None = None, on_show: object | None = None, on_pause: object | None = None):
+        """on_open/on_quit/on_data/on_show/on_pause：菜单回调（无参或单参函数）。
+        on_show：显示控制窗口（双击托盘图标或菜单「显示控制窗口」）。
+        on_pause：暂停/恢复采集切换。"""
         self.on_open = on_open
         self.on_quit = on_quit
         self.on_data = on_data
         self.on_show = on_show
+        self.on_pause = on_pause
+        self.paused = False  # 采集暂停状态（由外部设置，菜单显示相应文本）
         self._hwnd = None
         self._icon = None
         self._nid = None
@@ -251,6 +259,7 @@ class TrayIcon:
         self._menu_open = ID_OPEN
         self._menu_data = ID_DATA
         self._menu_exit = ID_EXIT
+        self._menu_pause = ID_PAUSE
         # 重要：ctypes 回调对象必须常驻，否则窗口消息到达时指向已释放的内存会崩溃
         self._wnd_proc_cb = WNDPROC(self._wnd_proc)
 
@@ -272,6 +281,9 @@ class TrayIcon:
                 self._call(self.on_open)
             elif cmd == ID_DATA:
                 self._call(self.on_data)
+            elif cmd == ID_PAUSE:
+                self.paused = not self.paused
+                self._call(self.on_pause)
             elif cmd == ID_EXIT:
                 self._call(self.on_quit)
             return 0
@@ -324,6 +336,8 @@ class TrayIcon:
         hMenu = user32.CreatePopupMenu()
         user32.AppendMenuW(hMenu, MF_STRING, ID_SHOW, "显示控制窗口")
         user32.AppendMenuW(hMenu, MF_STRING, ID_OPEN, "打开可视化页面")
+        pause_text = MENU_PAUSED if self.paused else MENU_RUNNING
+        user32.AppendMenuW(hMenu, MF_STRING, ID_PAUSE, pause_text)
         user32.AppendMenuW(hMenu, MF_STRING, ID_DATA, "打开数据目录")
         user32.AppendMenuW(hMenu, MF_SEPARATOR, 0, None)
         user32.AppendMenuW(hMenu, MF_STRING, ID_EXIT, "退出")
@@ -397,6 +411,25 @@ class TrayIcon:
             truncated = text[:120]
             nid.szTip = truncated
             nid.szInfo = truncated
+            shell32.Shell_NotifyIconW(NIM_MODIFY, ctypes.byref(nid))
+        except Exception:
+            pass
+
+    def notify(self, title: str, text: str, info_flags: int = 0) -> None:
+        """右下角气泡通知（balloon tip）。
+
+        info_flags：NIIF_NONE=0 / NIIF_INFO=1 / NIIF_WARNING=2 / NIIF_ERROR=3
+        可从任意线程调用（通过会话内队列转发到托盘线程）。
+        """
+        if self._nid is None or not self._active.is_set():
+            return
+        try:
+            nid = self._nid
+            nid.uFlags = NIF_INFO
+            nid.szInfoTitle = title[:63]
+            nid.szInfo = text[:255]
+            nid.dwInfoFlags = info_flags
+            nid.uTimeout = 5000  # 5 秒
             shell32.Shell_NotifyIconW(NIM_MODIFY, ctypes.byref(nid))
         except Exception:
             pass

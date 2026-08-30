@@ -28,6 +28,7 @@ export class Keyboard3D {
     this.barGroup = new THREE.Group();
     this.group.add(this.barGroup);
     scene.scene.add(this.group);
+    this.mode = 'classic';       // 'classic' | 'cover' | 'heat'
     this._buildAll();
   }
 
@@ -86,6 +87,8 @@ export class Keyboard3D {
     const bar = new THREE.Mesh(barGeo, barMat);
     bar.position.set(x, BAR_BASE, z);
     bar.scale.y = 0.001; // 初始几乎为 0
+    bar.scale.x = BAR_WIDTH;
+    bar.scale.z = BAR_DEPTH;
     bar.castShadow = true;
     this.barGroup.add(bar);
 
@@ -102,13 +105,29 @@ export class Keyboard3D {
     this.group.add(cap);
     this.group.add(label);
 
+    // 显示模式相关：目标/当前宽度（经典=细柱，覆盖=铺满键帽）
+    const coverW = Math.max(wu * 0.94, 0.1);
+    const coverD = Math.max(hu * 0.94, 0.1);
+
     return {
       id: k.id, cap, label, bar, tip, barMat,
       current: 0,      // 当前显示高度
       target: 0,       // 目标高度
       pressStart: -1,  // 按压动画开始时间
       hasData: false,
+      // 模式参数
+      classicW: BAR_WIDTH, classicD: BAR_DEPTH, classicBase: BAR_BASE,
+      coverW, coverD, coverBase: KEYCAP_TOP - 0.01,
+      curW: BAR_WIDTH, curD: BAR_DEPTH, curBase: BAR_BASE,
     };
+  }
+
+  /* ---------------- 显示模式 ---------------- */
+
+  /** 切换显示模式：classic 经典柱 / cover 覆盖式柱体 / heat 纯热力 */
+  setMode(mode) {
+    if (!['classic', 'cover', 'heat'].includes(mode)) return;
+    this.mode = mode;
   }
 
   /* ---------------- 数据更新 ---------------- */
@@ -146,22 +165,42 @@ export class Keyboard3D {
     // 热力着色依赖相对比例（由 main.js 每帧调用 updateColors 完成）
   }
 
-  /** 每帧：成长 + 按压动画 + 热力颜色 */
+  /** 每帧：成长 + 按压动画 + 热力颜色 + 模式过渡 */
   update(dt, elapsed) {
+    const mode = this.mode;
+    const isHeat = mode === 'heat';
+    const smooth = Math.min(1, dt * 6); // 模式过渡速度
+
     for (const mesh of this.keys.values()) {
+      // ---- 模式目标宽度/基座 ----
+      if (mode === 'cover') {
+        mesh.curW += (mesh.coverW - mesh.curW) * smooth;
+        mesh.curD += (mesh.coverD - mesh.curD) * smooth;
+        mesh.curBase += (mesh.coverBase - mesh.curBase) * smooth;
+      } else {
+        mesh.curW += (mesh.classicW - mesh.curW) * smooth;
+        mesh.curD += (mesh.classicD - mesh.curD) * smooth;
+        mesh.curBase += (mesh.classicBase - mesh.curBase) * smooth;
+      }
+
       // ---- 柱体成长（指数逼近） ----
       const h = mesh.current + (mesh.target - mesh.current) * Math.min(1, GROW_SPEED * dt);
       mesh.current = h;
-      if (h < 0.01) {
+
+      if (isHeat || h < 0.01) {
+        // 纯热力模式或空柱：隐藏柱体与光点
         mesh.bar.visible = false;
         mesh.tip.visible = false;
       } else {
         mesh.bar.visible = true;
         mesh.tip.visible = true;
         mesh.bar.scale.y = h;
-        const mid = BAR_BASE + h / 2;
+        mesh.bar.scale.x = mesh.curW;
+        mesh.bar.scale.z = mesh.curD;
+        const base = mesh.curBase;
+        const mid = base + h / 2;
         mesh.bar.position.y = mid;
-        mesh.tip.position.y = BAR_BASE + h + 0.03;
+        mesh.tip.position.y = base + h + 0.03;
       }
 
       // ---- 键帽按压回弹 ----
