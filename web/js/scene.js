@@ -231,12 +231,52 @@ export class Scene {
   /* ---------------- 渲染循环 ---------------- */
 
   start() {
-    this._rendererLoop();
+    this._frameCount = 0;
+    this._fpsTime = 0;
+    this._fps = 0;
+    this._frameLimit = 0;       // 0 = 不限制；>0 = 目标帧率
+    this._lastFrameTime = 0;
+    this._rendererLoop(performance.now());
   }
 
-  _rendererLoop() {
+  /** 设置帧率上限：0 = 不限制；否则为目标 FPS（30/60/120…） */
+  setFrameLimit(limit) {
+    this._frameLimit = Math.max(0, Math.floor(limit || 0));
+  }
+
+  /** 当前目标帧率上限（0 = 不限制） */
+  getFrameLimit() {
+    return this._frameLimit;
+  }
+
+  /** 当前实际帧率（每秒更新一次） */
+  getFPS() {
+    return this._fps;
+  }
+
+  _rendererLoop(now) {
     if (this._stopped) return;
-    requestAnimationFrame(() => this._rendererLoop());
+    requestAnimationFrame(() => this._rendererLoop(performance.now()));
+
+    // ---- 帧率限制：未到目标帧间隔则跳过本帧渲染 ----
+    const frameInterval = this._frameLimit > 0 ? 1000 / this._frameLimit : 0;
+    if (frameInterval > 0 && this._lastFrameTime > 0) {
+      const elapsedSinceLast = now - this._lastFrameTime;
+      if (elapsedSinceLast < frameInterval) {
+        return; // 跳过本帧（不渲染、不更新动画）
+      }
+    }
+    this._lastFrameTime = now;
+
+    // ---- FPS 统计 ----
+    this._frameCount++;
+    if (this._fpsTime === 0) this._fpsTime = now;
+    const fpsElapsed = now - this._fpsTime;
+    if (fpsElapsed >= 1000) {
+      this._fps = Math.round((this._frameCount * 1000) / fpsElapsed);
+      this._frameCount = 0;
+      this._fpsTime = now;
+    }
 
     const dt = this._clock.getDelta();
     const elapsed = this._clock.elapsedTime;
@@ -251,7 +291,7 @@ export class Scene {
     // 涟漪
     for (let i = this._ripples.length - 1; i >= 0; i--) {
       const r = this._ripples[i];
-      const age = (performance.now() - r.userData.born) / 1000;
+      const age = (now - r.userData.born) / 1000;
       if (age > 1.3) {
         this.scene.remove(r);
         this._ripples.splice(i, 1);

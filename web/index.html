@@ -43,6 +43,16 @@
 
   <!-- ============ 模型旋转控制 ============ -->
   <div id="ctrlBar">
+    <div class="fps-box" title="当前帧率 / 目标帧率">
+      <span class="fps-label">FPS</span>
+      <span id="fpsValue" class="fps-value">--</span>
+      <select id="fpsLimit" class="fps-select" title="帧率限制">
+        <option value="0">不限</option>
+        <option value="30">30</option>
+        <option value="60">60</option>
+        <option value="120">120</option>
+      </select>
+    </div>
     <button class="ctrl-btn" id="pauseBtn" title="暂停/恢复模型的自动旋转">
       <span class="pause-icon" id="pauseIcon">⏸</span>
       <span id="pauseText">暂停旋转</span>
@@ -88,6 +98,14 @@
     <p>🖱 左键旋转 · <b>Shift+左键拖动</b>平移 · 滚轮缩放 · 右键平移</p>
     <p class="dim">柱子高度 = 按键使用频率（√尺度）</p>
   </footer>
+
+  <!-- ============ 键帽点击菜单 ============ -->
+  <div id="keyMenu">
+    <div class="menu-title">按键 <b id="menuKeyLabel"></b></div>
+    <div class="menu-stat" id="menuStat"></div>
+    <div class="menu-item" id="menuHide">⤫ 隐藏该键柱体</div>
+    <div class="menu-item" id="menuUnhide">👁 恢复所有隐藏柱体</div>
+  </div>
 
   <!-- ============ 空键盘水位线 ============ -->
   <div id="watermark">按键数据将实时生长于此</div>

@@ -59,7 +59,7 @@ class EventHub:
 
 
 class AppHandler(BaseHTTPRequestHandler):
-    server_version = "keyboard-peak/1.0.4"
+    server_version = "keyboard-peak/1.0.5"
     protocol_version = "HTTP/1.1"
 
     # 静默访问日志（避免 stderr 噪声）

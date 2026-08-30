@@ -110,6 +110,7 @@ class ControlWindow:
     def _run(self) -> None:
         try:
             self._root = tk.Tk()
+            self._apply_tk_scaling()   # 高 DPI：按实际 DPI 调整 tk 缩放，文字/控件清晰
             self._root.title("keyboard-peak 控制中心")
             self._root.configure(bg=BG)
             self._root.attributes("-topmost", False)
@@ -154,6 +155,18 @@ class ControlWindow:
             log.exception("control window error")
         finally:
             self._ready.set()
+
+    def _apply_tk_scaling(self) -> None:
+        """高 DPI：按系统实际 DPI 设置 tk 缩放，使文字/控件按物理尺寸清晰渲染。"""
+        try:
+            if os.name == "nt":
+                import ctypes
+                # 获取屏幕 DPI（每英寸像素数）
+                dpi = ctypes.windll.user32.GetDpiForSystem() or 96
+                # tk scaling = dpi / 72，让 1pt ≈ 1/72 英寸物理尺寸
+                self._root.tk.call("tk", "scaling", dpi / 72.0)
+        except Exception:
+            pass
 
     def _build_ui(self) -> None:
         root = self._root

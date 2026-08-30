@@ -136,6 +136,33 @@ export class Keyboard3D {
     this.mode = mode;
   }
 
+  /** 隐藏某个键的柱体（菜单操作） */
+  hideKey(id) {
+    const mesh = this.keys.get(id);
+    if (!mesh) return;
+    mesh._hidden = true;
+    mesh.bar.visible = false;
+    mesh.tip.visible = false;
+    // 键帽暗化，提示已被隐藏
+    mesh.cap.material.emissive.setHex(0x000000);
+  }
+
+  /** 恢复所有被隐藏的柱体 */
+  unhideAll() {
+    for (const mesh of this.keys.values()) {
+      if (mesh._hidden) {
+        mesh._hidden = false;
+        mesh.cap.material.emissive.setHex(0x0a0d22);
+      }
+    }
+  }
+
+  /** 某键当前计数（供菜单展示详情） */
+  getCount(id) {
+    const mesh = this.keys.get(id);
+    return mesh ? (mesh._count || 0) : 0;
+  }
+
   /* ---------------- 数据更新 ---------------- */
 
   /** 应用整份快照（初始化或刷新） */
@@ -195,6 +222,10 @@ export class Keyboard3D {
 
       if (isHeat) {
         // 纯热力模式：隐藏柱体与光点
+        mesh.bar.visible = false;
+        mesh.tip.visible = false;
+      } else if (mesh._hidden) {
+        // 用户手动隐藏了该键柱体
         mesh.bar.visible = false;
         mesh.tip.visible = false;
       } else if (mode === 'cover' && h <= 0.001) {
